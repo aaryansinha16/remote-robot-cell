@@ -1,0 +1,126 @@
+name: robot-cell
+
+# Two networks stand in for two places. "cloud" is the hosted side, "site" is the customer LAN.
+# Only the on-prem server is on both, and it dials out to the cloud broker.
+
+services:
+  cloud-broker:
+    image: eclipse-mosquitto:2
+    entrypoint: ["/bin/sh", "/broker/entrypoint.sh"]
+    command: ["mosquitto", "-c", "/broker/mosquitto.conf"]
+    environment:
+      SITE_ID: ${SITE_ID:-site-001}
+      CLOUD_MQTT_PASSWORD: ${CLOUD_MQTT_PASSWORD:-cloud-dev-secret}
+      SITE_MQTT_PASSWORD: ${SITE_MQTT_PASSWORD:-site-dev-secret}
+    volumes:
+      - ./brokers/cloud:/broker:ro
+      - cloud-broker-data:/mosquitto/data
+    ports:
+      - "127.0.0.1:1883:1883"
+    networks: [cloud]
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -u cloud-api -P \"$$CLOUD_MQTT_PASSWORD\" -t '$$SYS/broker/uptime' -C 1 -W 3"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  cloud-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+      args:
+        PACKAGE: robotcell-cloud
+    command: ["uvicorn", "cloud.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    environment:
+      SITE_ID: ${SITE_ID:-site-001}
+      BROKER_HOST: cloud-broker
+      BROKER_PASSWORD: ${CLOUD_MQTT_PASSWORD:-cloud-dev-secret}
+      DB_PATH: /data/cloud.db
+    volumes:
+      - cloud-data:/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks: [cloud]
+    depends_on:
+      cloud-broker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  site-broker:
+    image: eclipse-mosquitto:2
+    command: ["mosquitto", "-c", "/broker/mosquitto.conf"]
+    volumes:
+      - ./brokers/site:/broker:ro
+    ports:
+      - "127.0.0.1:1884:1883"
+    networks: [site]
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/broker/uptime' -C 1 -W 3"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  onprem:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+      args:
+        PACKAGE: robotcell-onprem
+    command: ["python", "-m", "onprem"]
+    environment:
+      SITE_ID: ${SITE_ID:-site-001}
+      CLOUD_BROKER_HOST: cloud-broker
+      CLOUD_BROKER_PASSWORD: ${SITE_MQTT_PASSWORD:-site-dev-secret}
+      SITE_BROKER_HOST: site-broker
+      SITE_BROKER_PORT: 1883
+      DB_PATH: /data/onprem.db
+      SITE_MAP_PATH: /config/site.yaml
+      FAILURE_RATE: ${FAILURE_RATE:-0.15}
+    volumes:
+      - onprem-data:/data
+      - ./config/site.yaml:/config/site.yaml:ro
+    networks: [cloud, site]
+    depends_on:
+      cloud-broker:
+        condition: service_healthy
+      site-broker:
+        condition: service_healthy
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+  site-sim:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+      args:
+        PACKAGE: robotcell-site-sim
+    command: ["uvicorn", "sitesim.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8090", "--no-access-log"]
+    environment:
+      SITE_BROKER_HOST: site-broker
+      SITE_BROKER_PORT: 1883
+      SITE_MAP_PATH: /config/site.yaml
+    volumes:
+      - ./config/site.yaml:/config/site.yaml:ro
+    ports:
+      - "127.0.0.1:8090:8090"
+    networks: [site]
+    depends_on:
+      site-broker:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  cloud: {}
+  site: {}
+
+volumes:
+  cloud-broker-data: {}
+  cloud-data: {}
+  onprem-data: {}
