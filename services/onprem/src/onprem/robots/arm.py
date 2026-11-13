@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import random
 import time
 from collections.abc import AsyncIterator, Callable
@@ -9,6 +10,8 @@ from robotcell_protocol import FailReason, JobStep, Point, RobotSpec, distance
 
 from ..jobs import JobSpec
 from .locks import StationLocks
+
+log = logging.getLogger(__name__)
 
 _FAILURES_BY_STEP: dict[JobStep, tuple[FailReason, ...]] = {
     JobStep.MOVE_TO_PICK: (FailReason.PATH_BLOCKED,),
@@ -157,6 +160,12 @@ class SimulatedArm:
     @asynccontextmanager
     async def _at_station(self, station: str) -> AsyncIterator[None]:
         if self._locks.is_busy(station):
+            log.info(
+                "waiting for station robot=%s station=%s held_by=%s",
+                self.robot_id,
+                station,
+                self._locks.holder(station),
+            )
             self.waiting_for = station
             self.on_change(True)
         async with self._locks.hold(station, self.robot_id):

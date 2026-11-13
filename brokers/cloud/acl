@@ -1,0 +1,10 @@
+user cloud-api
+topic readwrite rc/v1/#
+topic read $SYS/#
+
+# Sites authenticate with their site id as username and only see their own subtree.
+pattern read rc/v1/sites/%u/commands
+pattern write rc/v1/sites/%u/events
+pattern write rc/v1/sites/%u/status
+pattern write rc/v1/sites/%u/heartbeat
+pattern write rc/v1/sites/%u/robots/+/state
