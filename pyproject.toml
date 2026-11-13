@@ -4,6 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "robotcell-protocol",
+    "robotcell-cloud",
     "robotcell-onprem",
 ]
 
@@ -19,10 +20,11 @@ dev = [
 package = false
 
 [tool.uv.workspace]
-members = ["packages/protocol", "services/onprem"]
+members = ["packages/protocol", "services/cloud", "services/onprem"]
 
 [tool.uv.sources]
 robotcell-protocol = { workspace = true }
+robotcell-cloud = { workspace = true }
 robotcell-onprem = { workspace = true }
 
 [tool.ruff]
@@ -36,5 +38,6 @@ ignore = ["RUF012", "ASYNC110"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-testpaths = ["packages/protocol/tests", "services/onprem/tests"]
+testpaths = ["packages/protocol/tests", "services/cloud/tests", "services/onprem/tests"]
 addopts = "--import-mode=importlib"
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]
