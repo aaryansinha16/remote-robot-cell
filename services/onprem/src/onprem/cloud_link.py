@@ -8,7 +8,6 @@ import aiomqtt
 from paho.mqtt.packettypes import PacketTypes
 from paho.mqtt.properties import Properties
 from robotcell_protocol import (
-    CloudStatus,
     Heartbeat,
     ProtocolError,
     RobotSnapshot,
@@ -149,7 +148,6 @@ class CloudLink:
 
     async def _on_connect(self, client: aiomqtt.Client) -> None:
         await client.subscribe(topics.commands(self._site_id), qos=1)
-        await client.subscribe(topics.CLOUD_STATUS, qos=1)
         birth = SiteStatus(
             online=True, boot_id=self._boot_id, version=self._version, started_at=self._started_at
         )
@@ -168,11 +166,6 @@ class CloudLink:
             decoded = decode(payload)
         except ProtocolError as exc:
             log.warning("dropping bad message on %s: %s", message.topic, exc)
-            return
-        if isinstance(decoded.message, CloudStatus):
-            log.info("cloud is %s", "online" if decoded.message.online else "offline")
-            if decoded.message.online:
-                self._on_connected()
             return
         try:
             await self._controller.handle(decoded.message)
