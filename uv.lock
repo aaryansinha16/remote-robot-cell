@@ -8,6 +8,7 @@ members = [
     "robotcell-cloud",
     "robotcell-onprem",
     "robotcell-protocol",
+    "robotcell-site-sim",
 ]
 
 [[package]]
@@ -527,6 +528,7 @@ dependencies = [
     { name = "robotcell-cloud" },
     { name = "robotcell-onprem" },
     { name = "robotcell-protocol" },
+    { name = "robotcell-site-sim" },
 ]
 
 [package.dev-dependencies]
@@ -542,6 +544,7 @@ requires-dist = [
     { name = "robotcell-cloud", editable = "services/cloud" },
     { name = "robotcell-onprem", editable = "services/onprem" },
     { name = "robotcell-protocol", editable = "packages/protocol" },
+    { name = "robotcell-site-sim", editable = "services/site-sim" },
 ]
 
 [package.metadata.requires-dev]
@@ -606,6 +609,29 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "pydantic", specifier = ">=2.9" }]
+
+[[package]]
+name = "robotcell-site-sim"
+version = "0.1.0"
+source = { editable = "services/site-sim" }
+dependencies = [
+    { name = "aiomqtt" },
+    { name = "fastapi" },
+    { name = "pydantic-settings" },
+    { name = "pyyaml" },
+    { name = "robotcell-protocol" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiomqtt", specifier = ">=2.3" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "pydantic-settings", specifier = ">=2.6" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "robotcell-protocol", editable = "packages/protocol" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+]
 
 [[package]]
 name = "ruff"

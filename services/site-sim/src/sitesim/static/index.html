@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site simulator</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --ink: #1c2330; --muted: #677284; --line: #dfe3ea;
+    --cell1: rgba(59, 130, 246, 0.10); --cell1-edge: #3b82f6;
+    --cell2: rgba(16, 185, 129, 0.10); --cell2-edge: #10b981;
+    --person: #dc2626; --ambient: #94a3b8; --forklift: #f59e0b; --station: #334155;
+    --ok: #15803d; --bad: #b91c1c; --warn: #b45309;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
+  header { display: flex; align-items: baseline; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; }
+  header p { margin: 0; color: var(--muted); }
+  .pills { margin-left: auto; display: flex; gap: 8px; }
+  .pill { font-size: 12px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); }
+  .pill.ok { color: var(--ok); border-color: #bbf7d0; background: #f0fdf4; }
+  .pill.bad { color: var(--bad); border-color: #fecaca; background: #fef2f2; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; padding: 20px 24px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+  aside { display: flex; flex-direction: column; gap: 16px; }
+  svg { width: 100%; height: auto; display: block; cursor: crosshair; user-select: none; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: #b6bfcc; }
+  button.danger { color: var(--bad); }
+  button.on { background: #fef2f2; border-color: #fecaca; color: var(--bad); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .list li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .list li span.meta { color: var(--muted); }
+  .list li .grow { flex: 1; }
+  .robot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; }
+  .robot + .robot { border-top: 1px solid var(--line); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f141b; --panel: #161d27; --ink: #e6ebf2; --muted: #93a0b4; --line: #263142; --station: #cbd5e1; }
+    .pill.ok { background: #0f2a1a; border-color: #14532d; }
+    .pill.bad, button.on { background: #2a1111; border-color: #7f1d1d; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Site simulator</h1>
+  <p>Publishes <code>fusion/objects</code> to the site broker. The cloud never sees this traffic.</p>
+  <div class="pills">
+    <span id="broker" class="pill">broker</span>
+    <span id="feed" class="pill">feed</span>
+    <span id="frames" class="pill">0 frames</span>
+  </div>
+</header>
+<main>
+  <section>
+    <h2>Site map</h2>
+    <svg id="map" role="img" aria-label="Site map"></svg>
+    <p class="hint">Click anywhere to send a person walking there. Click a red person to send them out.</p>
+  </section>
+  <aside>
+    <section>
+      <h2>People</h2>
+      <div class="row">
+        <button data-spawn='{"cell":"cell-1"}'>Walk into cell 1</button>
+        <button data-spawn='{"cell":"cell-2"}'>Walk into cell 2</button>
+        <button data-spawn='{"station":"C"}'>Stand at station C</button>
+        <button id="clear" class="danger">Everyone leaves</button>
+      </div>
+      <ul id="people" class="list"></ul>
+    </section>
+    <section>
+      <h2>Fusion feed</h2>
+      <div class="row"><button id="toggle-feed">Stop feed</button></div>
+      <p class="hint">Stopping the feed should pause every robot within a second.</p>
+    </section>
+    <section>
+      <h2>Robot faults</h2>
+      <div id="robots"></div>
+    </section>
+  </aside>
+</main>
+<script>
+const S = 38;
+const VIEW = { x0: -2, x1: 20, y0: -0.5, y1: 13 };
+const svg = document.getElementById("map");
+let world = null;
+
+const sx = (x) => (x - VIEW.x0) * S;
+const sy = (y) => (VIEW.y1 - y) * S;
+const el = (tag, attrs = {}, text) => {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+
+async function call(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) console.warn(method, path, res.status, await res.text());
+  return res.ok ? res.json() : null;
+}
+
+function drawMap() {
+  const { site, actors } = world;
+  svg.setAttribute("viewBox", `0 0 ${(VIEW.x1 - VIEW.x0) * S} ${(VIEW.y1 - VIEW.y0) * S}`);
+  svg.replaceChildren();
+  const aisle = site.aisle;
+  svg.append(el("rect", { x: sx(aisle.x[0]), y: sy(aisle.y + 1.4), width: (aisle.x[1] - aisle.x[0]) * S, height: 2.4 * S, fill: "var(--bg)", stroke: "var(--line)" }));
+  svg.append(el("text", { x: sx(aisle.x[0]) + 8, y: sy(aisle.y + 1.4) + 16, fill: "var(--muted)", "font-size": 12 }, "aisle"));
+
+  const colors = { "cell-1": ["var(--cell1)", "var(--cell1-edge)"], "cell-2": ["var(--cell2)", "var(--cell2-edge)"] };
+  const occupied = new Set(actors.filter((a) => a.kind === "person").flatMap((a) => a.cells));
+  for (const [name, rect] of Object.entries(site.cells)) {
+    const [fill, edge] = colors[name] || ["rgba(0,0,0,.05)", "#888"];
+    svg.append(el("rect", {
+      x: sx(rect.x[0]), y: sy(rect.y[1]), width: (rect.x[1] - rect.x[0]) * S, height: (rect.y[1] - rect.y[0]) * S,
+      fill, stroke: edge, "stroke-width": occupied.has(name) ? 3 : 1.5, "stroke-dasharray": occupied.has(name) ? "" : "6 4",
+    }));
+    const label = name === "cell-1" ? sx(rect.x[0]) + 8 : sx(rect.x[1]) - 8;
+    svg.append(el("text", { x: label, y: sy(rect.y[0]) - 8, fill: edge, "font-size": 13, "font-weight": 600, "text-anchor": name === "cell-1" ? "start" : "end" },
+      `${name}${occupied.has(name) ? "  occupied" : ""}`));
+  }
+  for (const robot of site.robots) {
+    const [x, y] = robot.base;
+    svg.append(el("circle", { cx: sx(x), cy: sy(y), r: 0.55 * S, fill: "none", stroke: "var(--station)", "stroke-width": 1.5 }));
+    svg.append(el("text", { x: sx(x), y: sy(y) + 4, "text-anchor": "middle", fill: "var(--station)", "font-size": 11 }, robot.id));
+    for (const st of robot.stations) {
+      const [px, py] = site.stations[st];
+      svg.append(el("line", { x1: sx(x), y1: sy(y), x2: sx(px), y2: sy(py), stroke: "var(--line)", "stroke-width": 1 }));
+    }
+  }
+  for (const [name, [x, y]] of Object.entries(site.stations)) {
+    svg.append(el("rect", { x: sx(x) - 11, y: sy(y) - 11, width: 22, height: 22, rx: 3, fill: "var(--panel)", stroke: "var(--station)", "stroke-width": 1.5 }));
+    svg.append(el("text", { x: sx(x), y: sy(y) + 5, "text-anchor": "middle", "font-size": 13, "font-weight": 700, fill: "var(--station)" }, name));
+  }
+  for (const a of actors) {
+    const color = a.kind === "forklift" ? "var(--forklift)" : a.ambient ? "var(--ambient)" : "var(--person)";
+    const g = el("g", { style: a.ambient ? "" : "cursor:pointer" });
+    if (a.kind === "forklift") {
+      g.append(el("rect", { x: sx(a.x) - 12, y: sy(a.y) - 8, width: 24, height: 16, rx: 3, fill: color }));
+    } else {
+      g.append(el("circle", { cx: sx(a.x), cy: sy(a.y), r: 8, fill: color }));
+    }
+    g.append(el("text", { x: sx(a.x) + 12, y: sy(a.y) - 10, "font-size": 11, fill: "var(--muted)" }, `${a.kind} ${a.gid}`));
+    if (!a.ambient) {
+      g.addEventListener("click", (event) => { event.stopPropagation(); call("POST", `/api/people/${a.gid}/leave`); });
+    }
+    svg.append(g);
+  }
+}
+
+function drawPanel() {
+  const broker = document.getElementById("broker");
+  broker.textContent = world.connected ? "broker connected" : "broker down";
+  broker.className = `pill ${world.connected ? "ok" : "bad"}`;
+  const feed = document.getElementById("feed");
+  feed.textContent = world.feed_on ? "feed on" : "feed stopped";
+  feed.className = `pill ${world.feed_on ? "ok" : "bad"}`;
+  document.getElementById("frames").textContent = `${world.frames} frames`;
+  const toggle = document.getElementById("toggle-feed");
+  toggle.textContent = world.feed_on ? "Stop feed" : "Start feed";
+  toggle.classList.toggle("on", !world.feed_on);
+
+  const people = document.getElementById("people");
+  people.replaceChildren();
+  for (const a of world.actors.filter((x) => !x.ambient)) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="grow">person ${a.gid} <span class="meta">(${a.x.toFixed(1)}, ${a.y.toFixed(1)}) ${a.cells.join(", ") || "outside cells"}</span></span>`;
+    const leave = document.createElement("button");
+    leave.textContent = "Leave";
+    leave.onclick = () => call("POST", `/api/people/${a.gid}/leave`);
+    const lost = document.createElement("button");
+    lost.textContent = "Lose track";
+    lost.title = "Drop the track without the person walking out";
+    lost.onclick = () => call("DELETE", `/api/people/${a.gid}`);
+    li.append(leave, lost);
+    people.append(li);
+  }
+  if (!people.children.length) people.innerHTML = '<li><span class="meta">Nobody inside. Ambient traffic stays in the aisle.</span></li>';
+
+  const robots = document.getElementById("robots");
+  robots.replaceChildren();
+  for (const [rid, fault] of Object.entries(world.faults)) {
+    const row = document.createElement("div");
+    row.className = "robot";
+    row.innerHTML = `<strong>${rid}</strong>`;
+    const actions = document.createElement("div");
+    actions.className = "row";
+    const plug = document.createElement("button");
+    plug.textContent = fault.connected ? "Unplug" : "Plug in";
+    plug.classList.toggle("on", !fault.connected);
+    plug.onclick = () => call("POST", `/api/robots/${rid}/fault`, { ...fault, connected: !fault.connected });
+    const stall = document.createElement("button");
+    stall.textContent = fault.stalled ? "Unstall" : "Stall";
+    stall.classList.toggle("on", fault.stalled);
+    stall.onclick = () => call("POST", `/api/robots/${rid}/fault`, { ...fault, stalled: !fault.stalled });
+    actions.append(plug, stall);
+    row.append(actions);
+    robots.append(row);
+  }
+}
+
+svg.addEventListener("click", (event) => {
+  const box = svg.getBoundingClientRect();
+  const scale = svg.viewBox.baseVal.width / box.width;
+  const x = (event.clientX - box.left) * scale / S + VIEW.x0;
+  const y = VIEW.y1 - (event.clientY - box.top) * scale / S;
+  call("POST", "/api/people", { x: +x.toFixed(2), y: +y.toFixed(2) });
+});
+document.querySelectorAll("[data-spawn]").forEach((b) => {
+  b.addEventListener("click", () => call("POST", "/api/people", JSON.parse(b.dataset.spawn)));
+});
+document.getElementById("clear").onclick = () => call("POST", "/api/people/leave");
+document.getElementById("toggle-feed").onclick = () => call("POST", "/api/feed", { on: !world.feed_on });
+
+async function refresh() {
+  try {
+    const res = await fetch("/api/world");
+    if (res.ok) {
+      world = await res.json();
+      drawMap();
+      drawPanel();
+    }
+  } catch (err) {
+    console.warn(err);
+  }
+  setTimeout(refresh, 200);
+}
+refresh();
+</script>
+</body>
+</html>
