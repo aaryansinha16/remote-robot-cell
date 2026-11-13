@@ -1,0 +1,31 @@
+# Site map in metres. Shared by the on-prem server and the site simulator.
+# Station C is a transfer station in the strip where both cells overlap.
+
+cells:
+  cell-1: { x: [0, 10], y: [0, 8] }
+  cell-2: { x: [8, 18], y: [0, 8] }
+
+stations:
+  A: [2.5, 6.0]
+  B: [2.5, 2.0]
+  C: [9.0, 4.0]
+  D: [15.5, 6.0]
+  E: [15.5, 2.0]
+
+robots:
+  - id: robot-1
+    serial: SIM-ARM-1001
+    model: sim-arm-6
+    cell: cell-1
+    base: [5.5, 4.0]
+    stations: [A, B, C]
+  - id: robot-2
+    serial: SIM-ARM-1002
+    model: sim-arm-6
+    cell: cell-2
+    base: [12.5, 4.0]
+    stations: [C, D, E]
+
+aisle:
+  y: 11.0
+  x: [-2, 20]
