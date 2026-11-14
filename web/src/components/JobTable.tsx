@@ -7,11 +7,12 @@ import { JobTimeline } from './JobTimeline'
 
 type Filter = 'all' | 'active' | 'finished'
 
-function detail(job: Job, robot: Robot | undefined, siteOnline: boolean): string {
+function detail(job: Job, robot: Robot | undefined, siteOnline: boolean, now: number): string {
   if (job.cancel_requested) return 'cancel requested'
   if (job.cancel_error) return `cancel refused, ${humanize(job.cancel_error)}`
   switch (job.status) {
     case 'pending':
+      if (now > job.start_deadline) return 'start deadline passed, the site will reject it'
       if (!siteOnline) return 'waiting for the site to come back'
       return job.send_attempts > 1 ? `sent ${job.send_attempts} times` : 'waiting for the site'
     case 'queued': {
@@ -119,7 +120,7 @@ export function JobTable({
                       <JobStatusBadge status={job.status} />
                     </td>
                     <td className="px-3 py-2.5 text-muted">
-                      {detail(job, robotsById.get(job.robot_id), siteOnline)}
+                      {detail(job, robotsById.get(job.robot_id), siteOnline, now)}
                     </td>
                     <td className="px-3 py-2.5 text-muted">{clock(job.created_at)}</td>
                     <td className="px-3 py-2.5 text-muted">{ago(job.updated_at, now)}</td>
