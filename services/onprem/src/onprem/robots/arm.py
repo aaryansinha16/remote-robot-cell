@@ -116,6 +116,7 @@ class SimulatedArm:
         done = 0.0
         try:
             for station, location, steps in plan:
+                self.step = steps[0][0]
                 async with self._at_station(station):
                     for step, duration in steps:
                         await self._perform(step, duration, failure, done, total)
