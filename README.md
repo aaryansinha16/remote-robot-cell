@@ -49,23 +49,30 @@ A first run takes a minute or two to build. Then:
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    operator((Operator)) --> web
-
-    subgraph cloud [cloud network]
-        web["web<br/>React, served by nginx"] -->|REST, WebSocket| api["cloud-api<br/>FastAPI, SQLite"]
-        api <-->|MQTT 5| cb[("cloud-broker<br/>auth and ACL")]
-    end
-
-    cb <-->|"MQTT 5, the site dials out"| onprem
-
-    subgraph site [site network]
-        sim["site-sim<br/>fusion feed, faults"] -->|fusion/objects| sb[("site-broker")]
-        sb --> onprem["onprem<br/>decides, runs, reports<br/>SQLite with outbox"]
-        onprem --> r1["robot-1, cell-1<br/>stations A B C"]
-        onprem --> r2["robot-2, cell-2<br/>stations C D E"]
-    end
+```
+             cloud network                    :             site network
+                                              :
+ +----------+    +-----------+                :    +---------------------+
+ | Operator |--->| web       |                :    | site-sim            |
+ +----------+    | React     |                :    | fusion feed, faults |
+                 | nginx     |                :    +----------+----------+
+                 +-----+-----+                :               |
+                       | REST, WebSocket      :               | fusion/objects, 5 Hz
+                 +-----v-----+                :    +----------v----------+
+                 | cloud-api |                :    | site-broker         |
+                 | FastAPI   |                :    +----------+----------+
+                 | SQLite    |                :               |
+                 +-----+-----+                :    +----------v----------+
+                       | MQTT 5               :    | onprem              |
+                 +-----v--------+   site dials out | decides, runs,      |
+                 | cloud-broker |<-----------------+ reports, SQLite     |
+                 | auth, ACL    |             :    +-----+-------------+-+
+                 +--------------+             :          |             |
+                                              :    +-----v-----+ +-----v-----+
+                                              :    | robot-1   | | robot-2   |
+                                              :    | cell-1    | | cell-2    |
+                                              :    | A  B  C   | | C  D  E   |
+                                              :    +-----------+ +-----------+
 ```
 
 Six containers on two Docker networks. `cloud` stands in for the hosted side and `site` for the
