@@ -52,6 +52,16 @@ services:
       retries: 12
     restart: unless-stopped
 
+  web:
+    build: ./web
+    ports:
+      - "127.0.0.1:3000:80"
+    networks: [cloud]
+    depends_on:
+      cloud-api:
+        condition: service_healthy
+    restart: unless-stopped
+
   site-broker:
     image: eclipse-mosquitto:2
     command: ["mosquitto", "-c", "/broker/mosquitto.conf"]
