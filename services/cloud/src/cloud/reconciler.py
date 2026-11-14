@@ -109,7 +109,8 @@ class Reconciler:
 
     async def _send_jobs(self, online: set[str]) -> None:
         rows = await self._db.fetchall(
-            "SELECT * FROM jobs WHERE status = ? AND next_send_at <= ? ORDER BY id",
+            "SELECT * FROM jobs WHERE status = ? AND next_send_at <= ? "
+            "AND cancel_requested_at IS NULL ORDER BY id",
             (JobStatus.PENDING, self._clock()),
         )
         for row in rows:

@@ -76,6 +76,18 @@ async def test_failed_publish_is_retried_without_counting_an_attempt(cloud):
     assert (await cloud.jobs.detail(job.job_id)).send_attempts == 1
 
 
+async def test_cancelled_pending_job_is_not_resent_only_the_cancel_is(cloud):
+    await cloud.fleet.apply_robot("site-001", snapshot())
+    job, _ = await cloud.jobs.create(BODY, None)
+    await cloud.reconciler.tick()
+    await cloud.jobs.request_cancel(job.job_id)
+
+    await online(cloud)
+    await cloud.reconciler.tick()
+
+    assert cloud.broker.kinds() == ["job.submit", "sync.request", "job.cancel"]
+
+
 async def test_enrollment_request_is_sent_with_the_reported_serial(cloud):
     await online(cloud)
     await cloud.fleet.apply_robot("site-001", snapshot(enrolled=False))
