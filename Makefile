@@ -14,8 +14,9 @@ help: ## Show this list
 up: ## Build and start everything
 	$(COMPOSE) up --build -d
 	@echo
-	@echo "  cloud api       $(API)/health"
+	@echo "  web app         http://localhost:3000"
 	@echo "  site simulator  http://localhost:8090"
+	@echo "  cloud api       $(API)/health"
 
 down: ## Stop everything and keep the data
 	$(COMPOSE) down
