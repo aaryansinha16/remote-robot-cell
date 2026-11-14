@@ -6,10 +6,10 @@ JSON := -H 'content-type: application/json'
 CELL ?= cell-1
 ROBOT ?= robot-1
 
-.PHONY: help up down reset logs ps test lint enroll onprem-stop onprem-start person person-at-c clear feed-off feed-on unplug plug
+.PHONY: help up down reset logs ps test lint e2e enroll jobs jobs-invalid onprem-stop onprem-start person person-at-c clear feed-off feed-on unplug plug
 
 help: ## Show this list
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-14s %s\n", $$1, $$2}'
+	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-14s %s\n", $$1, $$2}'
 
 up: ## Build and start everything
 	$(COMPOSE) up --build -d
@@ -37,10 +37,19 @@ lint: ## Lint and check formatting
 	uv run ruff check .
 	uv run ruff format --check .
 
+e2e: ## Run the end to end checks against the running stack
+	uv run python scripts/e2e.py
+
 enroll: ## Ask the site to enroll both robots
 	@curl -fsS -X POST $(API)/robots/robot-1/enroll > /dev/null
 	@curl -fsS -X POST $(API)/robots/robot-2/enroll > /dev/null
 	@echo "enrollment requested for robot-1 and robot-2"
+
+jobs: ## Send N random jobs across the enrolled robots, N=6
+	@uv run python scripts/submit_jobs.py --count $(or $(N),6)
+
+jobs-invalid: ## Send jobs the site has to reject
+	@uv run python scripts/submit_jobs.py --invalid
 
 onprem-stop: ## Stop the on-prem server
 	$(COMPOSE) stop onprem

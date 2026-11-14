@@ -41,3 +41,21 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm build
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [python, web]
+    env:
+      FAILURE_RATE: "0"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --python 3.12
+      - run: docker compose up --build --detach --wait
+      - run: uv run python scripts/e2e.py
+      - if: failure()
+        run: docker compose logs --no-color --tail=300
+      - if: always()
+        run: docker compose down --volumes
