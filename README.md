@@ -50,24 +50,22 @@ A first run takes a minute or two to build. Then:
 ## Architecture
 
 ```mermaid
-flowchart TB
+flowchart LR
     operator((Operator)) --> web
 
     subgraph cloud [cloud network]
-        direction LR
         web["web<br/>React, served by nginx"] -->|REST, WebSocket| api["cloud-api<br/>FastAPI, SQLite"]
-        api <-->|MQTT 5| cb[("cloud-broker<br/>Mosquitto, auth and ACL")]
+        api <-->|MQTT 5| cb[("cloud-broker<br/>auth and ACL")]
     end
 
+    cb <-->|"MQTT 5, the site dials out"| onprem
+
     subgraph site [site network]
-        direction LR
-        sim["site-sim<br/>fusion feed, faults"] -->|fusion/objects, 5 Hz| sb[("site-broker<br/>Mosquitto")]
+        sim["site-sim<br/>fusion feed, faults"] -->|fusion/objects| sb[("site-broker")]
         sb --> onprem["onprem<br/>decides, runs, reports<br/>SQLite with outbox"]
         onprem --> r1["robot-1, cell-1<br/>stations A B C"]
         onprem --> r2["robot-2, cell-2<br/>stations C D E"]
     end
-
-    onprem -->|dials out, persistent MQTT 5 session| cb
 ```
 
 Six containers on two Docker networks. `cloud` stands in for the hosted side and `site` for the
