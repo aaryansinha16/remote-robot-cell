@@ -50,30 +50,24 @@ A first run takes a minute or two to build. Then:
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
     operator((Operator)) --> web
 
     subgraph cloud [cloud network]
-        web["web<br/>React, served by nginx"]
-        api["cloud-api<br/>FastAPI, SQLite"]
-        cb[("cloud-broker<br/>Mosquitto, auth and ACL")]
+        direction LR
+        web["web<br/>React, served by nginx"] -->|REST, WebSocket| api["cloud-api<br/>FastAPI, SQLite"]
+        api <-->|MQTT 5| cb[("cloud-broker<br/>Mosquitto, auth and ACL")]
     end
 
     subgraph site [site network]
-        onprem["onprem<br/>decides, runs, reports<br/>SQLite with outbox"]
-        sb[("site-broker<br/>Mosquitto")]
-        sim["site-sim<br/>fusion feed, faults"]
-        r1["robot-1, cell-1<br/>stations A B C"]
-        r2["robot-2, cell-2<br/>stations C D E"]
+        direction LR
+        sim["site-sim<br/>fusion feed, faults"] -->|fusion/objects, 5 Hz| sb[("site-broker<br/>Mosquitto")]
+        sb --> onprem["onprem<br/>decides, runs, reports<br/>SQLite with outbox"]
+        onprem --> r1["robot-1, cell-1<br/>stations A B C"]
+        onprem --> r2["robot-2, cell-2<br/>stations C D E"]
     end
 
-    web -->|REST and WebSocket| api
-    api <-->|MQTT 5| cb
-    onprem -->|dials out, MQTT 5 persistent session| cb
-    sim -->|fusion/objects at 5 Hz| sb
-    sb --> onprem
-    onprem --> r1
-    onprem --> r2
+    onprem -->|dials out, persistent MQTT 5 session| cb
 ```
 
 Six containers on two Docker networks. `cloud` stands in for the hosted side and `site` for the
