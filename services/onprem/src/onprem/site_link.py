@@ -1,10 +1,11 @@
 import asyncio
+import contextlib
 import logging
 import random
 
 import aiomqtt
 from pydantic import ValidationError
-from robotcell_protocol import FusionFrame, ProtocolError, RobotFault, decode, topics
+from robotcell_protocol import FusionFrame, ProtocolError, RobotFault, decode, encode, topics
 
 from .config import Settings
 from .robots import Robot
@@ -14,7 +15,8 @@ log = logging.getLogger(__name__)
 
 
 class SiteLink:
-    """Connection to the site LAN broker: fusion frames in, simulated robot faults in.
+    """Connection to the site LAN broker: fusion frames and simulated faults in, arm telemetry
+    out.
 
     Nothing here touches the cloud. If this link drops, frames stop and the safety monitor
     pauses every robot on its own.
@@ -40,13 +42,28 @@ class SiteLink:
                     await client.subscribe(topics.FUSION_OBJECTS, qos=0)
                     await client.subscribe(topics.SIM_ROBOT_FAULTS, qos=1)
                     log.info("connected to site broker")
-                    async for message in client.messages:
-                        self._dispatch(message)
+                    telemetry = asyncio.create_task(self._stream_telemetry(client))
+                    try:
+                        async for message in client.messages:
+                            self._dispatch(message)
+                    finally:
+                        telemetry.cancel()
+                        with contextlib.suppress(asyncio.CancelledError, aiomqtt.MqttError):
+                            await telemetry
             except aiomqtt.MqttError as exc:
                 log.warning("site link down: %s", exc)
             delay = random.uniform(0, min(5.0, 0.5 * 2**attempt))
             attempt += 1
             await asyncio.sleep(delay)
+
+    async def _stream_telemetry(self, client: aiomqtt.Client) -> None:
+        period = 1.0 / self._settings.telemetry_hz
+        while True:
+            for robot in self._robots.values():
+                await client.publish(
+                    topics.robot_telemetry(robot.id), encode(robot.telemetry()), qos=0
+                )
+            await asyncio.sleep(period)
 
     def _dispatch(self, message: aiomqtt.Message) -> None:
         payload = message.payload

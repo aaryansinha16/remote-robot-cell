@@ -14,6 +14,7 @@ from robotcell_protocol import (
     RobotActivity,
     RobotSnapshot,
     RobotSpec,
+    RobotTelemetry,
     now_ms,
 )
 
@@ -141,23 +142,6 @@ class Robot:
         await self._idle.wait()
 
     def snapshot(self) -> RobotSnapshot:
-        current = None
-        if self._current is not None and self.arm.step is not None:
-            current = CurrentJob(
-                job_id=self._current.job_id,
-                pick=self._current.pick,
-                place=self._current.place,
-                step=self.arm.step,
-                progress=round(self.arm.progress, 3),
-            )
-        if not self.connected:
-            state = RobotActivity.OFFLINE
-        elif self._pause is not None:
-            state = RobotActivity.PAUSED
-        elif self._current is not None:
-            state = RobotActivity.BUSY
-        else:
-            state = RobotActivity.IDLE
         return RobotSnapshot(
             robot_id=self.id,
             serial=self.spec.serial,
@@ -166,12 +150,45 @@ class Robot:
             stations=list(self.spec.stations),
             enrollment=Enrollment.ENROLLED if self.enrolled else Enrollment.UNENROLLED,
             connected=self.connected,
-            state=state,
+            state=self._activity(),
             pause=self._pause,
-            current=current,
+            current=self._current_job(),
             queue=[job.job_id for job in self._queue],
             waiting_for=self.arm.waiting_for,
             updated_at=self._clock(),
+        )
+
+    def telemetry(self) -> RobotTelemetry:
+        x, y = self.arm.tool
+        return RobotTelemetry(
+            robot_id=self.id,
+            state=self._activity(),
+            tool=(round(x, 3), round(y, 3)),
+            holding=self.arm.holding,
+            current=self._current_job(),
+            waiting_for=self.arm.waiting_for,
+            pause=self._pause,
+            at=self._clock(),
+        )
+
+    def _activity(self) -> RobotActivity:
+        if not self.connected:
+            return RobotActivity.OFFLINE
+        if self._pause is not None:
+            return RobotActivity.PAUSED
+        if self._current is not None:
+            return RobotActivity.BUSY
+        return RobotActivity.IDLE
+
+    def _current_job(self) -> CurrentJob | None:
+        if self._current is None or self.arm.step is None:
+            return None
+        return CurrentJob(
+            job_id=self._current.job_id,
+            pick=self._current.pick,
+            place=self._current.place,
+            step=self.arm.step,
+            progress=round(self.arm.progress, 3),
         )
 
     async def run(self) -> None:
@@ -200,16 +217,32 @@ class Robot:
                 self._notify(True)
             await asyncio.sleep(interval_s)
 
+    def _can_move(self) -> bool:
+        return self.connected and self._pause is None
+
     def _can_start(self) -> bool:
-        return self._accepting and self.enrolled and self.connected and self._pause is None
+        return self._accepting and self.enrolled and self._can_move()
 
     async def _next_job(self) -> JobSpec:
         while not (self._can_start() and self._queue):
             self._wake.clear()
-            await self._wake.wait()
+            if self._can_move() and not self.arm.at_rest:
+                await self._retract_until_woken()
+            else:
+                await self._wake.wait()
         job = self._queue.popleft()
         self._notify(True)
         return job
+
+    async def _retract_until_woken(self) -> None:
+        retract = asyncio.create_task(self.arm.retract())
+        woken = asyncio.create_task(self._wake.wait())
+        try:
+            await asyncio.wait((retract, woken), return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            retract.cancel()
+            woken.cancel()
+            await asyncio.gather(retract, woken, return_exceptions=True)
 
     async def _execute(self, job: JobSpec) -> None:
         if self._clock() > job.start_deadline:
