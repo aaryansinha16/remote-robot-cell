@@ -7,6 +7,8 @@ from robotcell_protocol import (
     JobStatusUpdate,
     JobSubmit,
     ProtocolError,
+    RobotActivity,
+    RobotTelemetry,
     can_transition,
     decode,
     encode,
@@ -25,6 +27,17 @@ def test_round_trip_keeps_message_and_ids():
     assert decoded.msg_id == "m1"
     assert decoded.ts == 123
     assert decoded.message == submit
+
+
+def test_telemetry_round_trips_with_a_tool_position():
+    telemetry = RobotTelemetry(
+        robot_id="robot-1", state=RobotActivity.BUSY, tool=(2.5, 6.0), holding=True, at=5
+    )
+
+    decoded = decode(encode(telemetry)).message
+
+    assert decoded == telemetry
+    assert topics.robot_telemetry("robot-1") == "robots/robot-1/telemetry"
 
 
 def test_envelope_shape_is_stable():

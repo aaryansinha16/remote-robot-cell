@@ -33,5 +33,6 @@ class Settings(BaseSettings):
     safety_classes: list[str] = ["person"]
     safety_resume_after_s: float = 2.0
     safety_feed_timeout_s: float = 1.0
+    telemetry_hz: float = 10.0
 
     log_level: str = "INFO"

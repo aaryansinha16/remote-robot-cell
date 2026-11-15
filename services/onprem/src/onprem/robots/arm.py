@@ -20,7 +20,7 @@ _FAILURES_BY_STEP: dict[JobStep, tuple[FailReason, ...]] = {
     JobStep.PLACE: (FailReason.GRIPPER_FAULT,),
 }
 
-_MOVES = {JobStep.MOVE_TO_PICK, JobStep.MOVE_TO_PLACE}
+_REST_OFFSET: Point = (0.0, 1.0)
 
 
 class JobFailure(Exception):
@@ -67,10 +67,14 @@ class SimulatedArm:
         self._timing = timing
         self._failure_rate = failure_rate
         self._rng = rng
-        self._position: Point = spec.base
         self._abort: FailReason | None = None
         self._active_s = 0.0
+        self._done_s = 0.0
+        self._total_s = 1.0
 
+        self.rest: Point = (spec.base[0] + _REST_OFFSET[0], spec.base[1] + _REST_OFFSET[1])
+        self.tool: Point = self.rest
+        self.holding = False
         self.halted = False
         self.link_up = True
         self.stalled = False
@@ -99,46 +103,75 @@ class SimulatedArm:
                 self.last_heartbeat = time.monotonic()
             await asyncio.sleep(interval_s)
 
+    @property
+    def at_rest(self) -> bool:
+        return self.tool == self.rest
+
     async def run(self, job: JobSpec) -> None:
         self._abort = None
         self._active_s = 0.0
+        self._done_s = 0.0
         failure = self._draw_failure()
         pick_at = self._stations[job.pick]
         place_at = self._stations[job.place]
-        move_in = self._travel(self._position, pick_at)
+        move_in = self._travel(self.tool, pick_at)
         move_over = self._travel(pick_at, place_at)
         grip = self._timing.grip_s
-        plan = (
-            (job.pick, pick_at, ((JobStep.MOVE_TO_PICK, move_in), (JobStep.PICK, grip))),
-            (job.place, place_at, ((JobStep.MOVE_TO_PLACE, move_over), (JobStep.PLACE, grip))),
-        )
-        total = move_in + move_over + 2 * grip
-        done = 0.0
+        self._total_s = move_in + move_over + 2 * grip
         try:
-            for station, location, steps in plan:
-                self.step = steps[0][0]
-                async with self._at_station(station):
-                    for step, duration in steps:
-                        await self._perform(step, duration, failure, done, total)
-                        done += duration
-                        if step in _MOVES:
-                            self._position = location
+            self.step = JobStep.MOVE_TO_PICK
+            async with self._at_station(job.pick):
+                await self._perform(JobStep.MOVE_TO_PICK, move_in, failure, to=pick_at)
+                await self._perform(JobStep.PICK, grip, failure)
+                self.holding = True
+            self.step = JobStep.MOVE_TO_PLACE
+            async with self._at_station(job.place):
+                await self._perform(JobStep.MOVE_TO_PLACE, move_over, failure, to=place_at)
+                await self._perform(JobStep.PLACE, grip, failure)
+                self.holding = False
         finally:
             self.step = None
             self.progress = 0.0
             self.waiting_for = None
+            self.holding = False
+
+    async def retract(self) -> None:
+        """Folds back to the rest pose between jobs, so an idle arm never blocks a station."""
+        if self.at_rest:
+            return
+        self._abort = None
+        origin = self.tool
+        duration = self._travel(origin, self.rest)
+        async for elapsed in self._ticks(duration, timed=False):
+            self.tool = _lerp(origin, self.rest, elapsed / duration)
+            self.on_change(False)
+        self.tool = self.rest
 
     async def _perform(
         self,
         step: JobStep,
         duration: float,
         failure: _PlannedFailure | None,
-        done_before: float,
-        total: float,
+        *,
+        to: Point | None = None,
     ) -> None:
         self.step = step
         self.on_change(True)
+        origin = self.tool
         fail_after = duration * 0.5 if failure and failure.step is step else None
+        async for elapsed in self._ticks(duration, timed=True):
+            if to is not None:
+                self.tool = _lerp(origin, to, elapsed / duration)
+            if fail_after is not None and elapsed >= fail_after:
+                raise JobFailure(failure.reason)  # type: ignore[union-attr]
+            self.progress = (self._done_s + elapsed) / self._total_s
+            self.on_change(False)
+        if to is not None:
+            self.tool = to
+        self._done_s += duration
+
+    async def _ticks(self, duration: float, *, timed: bool) -> AsyncIterator[float]:
+        """Yields elapsed motion time. A halt, a lost link or a stall stops the clock."""
         tick = self._timing.tick_s
         elapsed = 0.0
         while elapsed < duration:
@@ -147,16 +180,14 @@ class SimulatedArm:
                 raise JobFailure(self._abort)
             if self.halted or not self.link_up:
                 continue
-            self._active_s += tick
-            if self._active_s > self._timing.max_runtime_s:
-                raise JobFailure(FailReason.TIMEOUT)
+            if timed:
+                self._active_s += tick
+                if self._active_s > self._timing.max_runtime_s:
+                    raise JobFailure(FailReason.TIMEOUT)
             if self.stalled:
                 continue
             elapsed = min(duration, elapsed + tick)
-            if fail_after is not None and elapsed >= fail_after:
-                raise JobFailure(failure.reason)  # type: ignore[union-attr]
-            self.progress = (done_before + elapsed) / total
-            self.on_change(False)
+            yield elapsed
 
     @asynccontextmanager
     async def _at_station(self, station: str) -> AsyncIterator[None]:
@@ -181,5 +212,9 @@ class SimulatedArm:
     def _draw_failure(self) -> _PlannedFailure | None:
         if self._rng.random() >= self._failure_rate:
             return None
-        step = self._rng.choice(list(JobStep))
+        step = self._rng.choice(list(_FAILURES_BY_STEP))
         return _PlannedFailure(step, self._rng.choice(_FAILURES_BY_STEP[step]))
+
+
+def _lerp(a: Point, b: Point, t: float) -> Point:
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)

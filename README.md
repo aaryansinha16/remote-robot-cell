@@ -83,7 +83,7 @@ customer LAN. Only `onprem` is attached to both, and it only ever connects outwa
 | `cloud-broker` | Mosquitto with a password file and an ACL that pins each site to its own topic subtree. Persistence is on, so commands queued for an offline site survive a broker restart. |
 | `cloud-api` | FastAPI. Stores jobs, reconciles them with the site, and serves REST plus a WebSocket feed. SQLite. |
 | `web` | React and TypeScript, built with Vite and served by nginx. nginx also proxies `/api` and `/api/ws`. |
-| `site-broker` | Mosquitto on the site LAN. Carries the fusion feed and the simulator's fault messages. |
+| `site-broker` | Mosquitto on the site LAN. Carries the fusion feed, the simulator's fault messages and the arms' telemetry. |
 | `onprem` | Plain asyncio Python. Policy, per-robot queues, the simulated arms, the safety monitor, and the links to both brokers. SQLite. |
 | `site-sim` | Publishes `fusion/objects` in the site format and lets you walk people around or break things. |
 
@@ -106,6 +106,7 @@ the topic so a breaking change can run side by side with the old one.
 | `rc/v1/cloud/status` | cloud | 1 | yes | `cloud.status` birth and Last Will, for monitoring |
 | `fusion/objects` | site LAN only | 0 | no | Tracked objects, in the format from the brief |
 | `sim/robots/{robot}/fault` | site LAN only | 1 | yes | `sim.robot_fault`, simulator only |
+| `robots/{robot}/telemetry` | site LAN only | 0 | no | `robot.telemetry` at 10 Hz: where the gripper is and what it is doing |
 
 All commands to a site share one topic because MQTT only guarantees ordering within a topic. A
 `job.cancel` must never overtake the `job.submit` it refers to.
@@ -171,6 +172,12 @@ drift on a message shape.
                "progress": 0.61 },
   "queue": ["a41c..."], "waiting_for": null, "updated_at": 1763030405121
 }
+
+// robot.telemetry: site LAN only; tool is the gripper position in site metres
+{ "robot_id": "robot-1", "state": "busy", "tool": [4.1, 5.2], "holding": true,
+  "current": { "job_id": "3f9e...", "pick": "A", "place": "C", "step": "move_to_place",
+               "progress": 0.48 },
+  "waiting_for": null, "pause": null, "at": 1763030405121 }
 ```
 
 `fusion/objects` uses the site format unchanged (`ts`, `t_ms`, and `objects` with `gid`, `class`,
@@ -355,7 +362,8 @@ Both robots can reach station C. Two things follow from that:
 - **The site serializes access.** It holds a lock per station, and an arm takes the lock from
   the move into the station until it finishes the pick or place there. An arm never holds two
   stations at once, so the two arms can't deadlock. The waiting arm shows "waiting for station
-  C". A paused arm keeps the station it is standing in.
+  C". A paused arm keeps the station it is standing in. An idle arm folds back to a rest pose
+  next to its base, so it never stays parked inside C.
 - **C sits in the strip where the two cells overlap.** A person standing at C is inside both
   cells and pauses both robots.
 

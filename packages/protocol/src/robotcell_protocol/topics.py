@@ -6,6 +6,7 @@ ROOT = "rc/v1"
 CLOUD_STATUS = f"{ROOT}/cloud/status"
 FUSION_OBJECTS = "fusion/objects"
 SIM_ROBOT_FAULTS = "sim/robots/+/fault"
+ROBOT_TELEMETRY = "robots/+/telemetry"
 
 
 class Channel(StrEnum):
@@ -42,6 +43,10 @@ def robot_state(site_id: str, robot_id: str) -> str:
 
 def sim_robot_fault(robot_id: str) -> str:
     return f"sim/robots/{robot_id}/fault"
+
+
+def robot_telemetry(robot_id: str) -> str:
+    return f"robots/{robot_id}/telemetry"
 
 
 CLOUD_SUBSCRIPTIONS = (

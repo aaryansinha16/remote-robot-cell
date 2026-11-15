@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .lifecycle import JobStatus
 from .robot import CurrentJob, Enrollment, PauseInfo, RobotActivity
+from .sitemap import Point
 
 
 class Message(BaseModel):
@@ -120,6 +121,22 @@ class RobotSnapshot(Message):
     queue: list[str] = Field(default_factory=list)
     waiting_for: str | None = None
     updated_at: int
+
+
+@register
+class RobotTelemetry(Message):
+    """What a robot controller streams on the site LAN. Never forwarded to the cloud."""
+
+    kind = "robot.telemetry"
+
+    robot_id: str
+    state: RobotActivity
+    tool: Point
+    holding: bool = False
+    current: CurrentJob | None = None
+    waiting_for: str | None = None
+    pause: PauseInfo | None = None
+    at: int
 
 
 @register
