@@ -89,6 +89,17 @@ def site_online(expected: bool) -> bool:
     return api.get("/site").json()["online"] is expected
 
 
+def arm_on_floor(robot_id: str) -> dict[str, Any]:
+    return sim.get("/world").json()["robots"].get(robot_id, {})
+
+
+def floor_shows_pause() -> bool:
+    world = sim.get("/world").json()
+    arm = world["robots"].get("robot-1", {})
+    logged = any(e["text"].startswith("robot-1 paused: person in cell-1") for e in world["events"])
+    return bool(arm.get("live")) and arm.get("state") == "paused" and logged
+
+
 def check_ready() -> None:
     wait_for("cloud api", lambda: api.get("/health").json()["broker_connected"], 60)
     wait_for("site online", lambda: site_online(True), 60)
@@ -192,12 +203,15 @@ def check_safety_pause() -> None:
     expect(paused["reason"] == "person_in_cell", f"paused for {paused['reason']}")
     expect(gid in paused["track_ids"], "pause does not name the person")
     expect(robot("robot-2")["pause"] is None, "robot-2 paused for a person in cell 1")
+    wait_for("site floor to show the pause", floor_shows_pause, 3)
 
     before = robot("robot-1")["current"]
+    tool = arm_on_floor("robot-1")["tool"]
     time.sleep(1.5)
     after = robot("robot-1")["current"]
     if before and after:
         expect(before["progress"] == after["progress"], "arm kept moving while paused")
+    expect(arm_on_floor("robot-1")["tool"] == tool, "site floor shows the arm moving while paused")
     expect(job(job_id)["status"] == "running", "pause changed the job status")
 
     sim.delete(f"/people/{gid}")

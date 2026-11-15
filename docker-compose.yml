@@ -111,7 +111,7 @@ services:
       dockerfile: Dockerfile.python
       args:
         PACKAGE: robotcell-site-sim
-    command: ["uvicorn", "sitesim.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8090", "--no-access-log"]
+    command: ["uvicorn", "sitesim.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8090", "--no-access-log", "--timeout-graceful-shutdown", "3"]
     environment:
       SITE_BROKER_HOST: site-broker
       SITE_BROKER_PORT: 1883

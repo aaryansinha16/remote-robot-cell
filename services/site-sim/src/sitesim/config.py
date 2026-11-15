@@ -10,5 +10,8 @@ class Settings(BaseSettings):
     site_broker_port: int = 1884
     site_map_path: Path = Path("/config/site.yaml")
     rate_hz: float = 5.0
+    step_hz: float = 20.0
+    view_hz: float = 20.0
+    telemetry_timeout_s: float = 1.5
     ambient_traffic: bool = True
     log_level: str = "INFO"
