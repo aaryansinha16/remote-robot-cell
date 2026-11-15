@@ -29,7 +29,7 @@ docker compose up --build        # or: make up
 | What | Where |
 |---|---|
 | Operator console | http://localhost:3000 |
-| Site simulator, to place people and inject faults | http://localhost:8090 |
+| Site floor: live 2D view of the cells, people and arms, plus fault injection | http://localhost:8090 |
 | Cloud API docs | http://localhost:8000/docs |
 
 A first run takes a minute or two to build. Then:
@@ -40,9 +40,17 @@ A first run takes a minute or two to build. Then:
    reject.
 3. Take the site offline with `make onprem-stop`, send a couple of jobs (they stay pending),
    then `make onprem-start` and watch each one run once.
-4. In the simulator, click **Walk into cell 1** while robot-1 is busy. It pauses as the person
-   crosses into the cell and resumes about two seconds after they leave. **Stand at station
-   C** pauses both robots. **Stop feed** shows the fail-safe.
+4. Open the site floor next to the console and press **1** (or click **Walk into cell 1**)
+   while robot-1 is busy. The person walks in, the cell turns red and the arm freezes where it
+   is. The event log shows the entry and the pause, with the latency the site measured. Press
+   **X** to send everyone out, and the arm resumes about two seconds later. **C** puts someone
+   at station C and pauses both robots. **F** stops the fusion feed and shows the fail-safe.
+
+![The site floor: robot-1 carries a part to station C while robot-2 holds still because a person is in cell 2](docs/site-floor.jpg)
+
+The site floor draws the arms from the telemetry the site server publishes, not from a script
+of its own, so what you see moving is what the site decided. Everything on that page stays on
+the site network.
 
 `make help` lists everything. `make reset` wipes all data. `FAILURE_RATE` in `.env` (see
 `.env.example`) controls how often a simulated job fails, 15% by default.
@@ -85,7 +93,7 @@ customer LAN. Only `onprem` is attached to both, and it only ever connects outwa
 | `web` | React and TypeScript, built with Vite and served by nginx. nginx also proxies `/api` and `/api/ws`. |
 | `site-broker` | Mosquitto on the site LAN. Carries the fusion feed, the simulator's fault messages and the arms' telemetry. |
 | `onprem` | Plain asyncio Python. Policy, per-robot queues, the simulated arms, the safety monitor, and the links to both brokers. SQLite. |
-| `site-sim` | Publishes `fusion/objects` in the site format and lets you walk people around or break things. |
+| `site-sim` | Publishes `fusion/objects` in the site format, lets you walk people around or break things, and draws the floor live from the arms' telemetry. |
 
 There are two brokers on purpose. On a real site the fusion service publishes on a local broker,
 and the safety decision should not depend on anything outside the building. Keeping the fusion
@@ -443,7 +451,7 @@ make e2e         # end to end checks against a running stack
     mid-job, the station C lock, and the safety monitor with fake clocks
   - the cloud: idempotent creates, out-of-order reports, resend and backoff, resync on
     reconnect, the stale Last Will, and the API and WebSocket
-  - the simulator's world model
+  - the simulator's world model and its event log
 - **[`scripts/e2e.py`](scripts/e2e.py)** drives the real stack. It covers enrollment, jobs on
   both robots, and a rejected job. It stops `onprem`, sends jobs and restarts it, checking the
   site's own execution counter is exactly 1. It injects duplicate `job.submit` messages
@@ -479,7 +487,7 @@ services/cloud/             the cloud API
   bridge.py                 MQTT session and dispatch
   api.py, hub.py            REST endpoints and the WebSocket fan-out
 
-services/site-sim/          simulated fusion feed, people, faults, control page
+services/site-sim/          simulated fusion feed, people and faults, and the live floor view
 web/                        operator console (React, TypeScript, Tailwind)
 brokers/                    Mosquitto config, credentials and ACL
 config/site.yaml            the site map and robot inventory
