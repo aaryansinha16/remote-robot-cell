@@ -43,6 +43,7 @@ export const api = {
     }),
   cancelJob: (jobId: string) => request<Job>(`/jobs/${jobId}/cancel`, { method: 'POST' }),
   jobDetail: (jobId: string) => request<JobDetail>(`/jobs/${jobId}`),
+  clearFinished: () => request<{ cleared: number }>('/jobs/finished', { method: 'DELETE' }),
   enroll: (robotId: string) => request<Robot>(`/robots/${robotId}/enroll`, { method: 'POST' }),
   unenroll: (robotId: string) => request<Robot>(`/robots/${robotId}/unenroll`, { method: 'POST' }),
 }

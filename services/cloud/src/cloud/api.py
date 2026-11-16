@@ -68,6 +68,11 @@ async def list_jobs(svc: Svc, limit: Annotated[int, Query(ge=1, le=1000)] = 200)
     return await svc.jobs.recent(limit)
 
 
+@router.delete("/jobs/finished")
+async def clear_finished(svc: Svc) -> dict[str, int]:
+    return {"cleared": await svc.jobs.clear_finished()}
+
+
 @router.get("/jobs/{job_id}")
 async def job_detail(job_id: str, svc: Svc) -> JobDetail:
     return await svc.jobs.detail(job_id)

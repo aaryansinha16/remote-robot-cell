@@ -90,3 +90,14 @@ def test_recent_only_returns_entries_after_a_given_id():
         journal.note("action", f"event {index}")
 
     assert [entry.text for entry in journal.recent(after=3)] == ["event 3", "event 4"]
+
+
+def test_clearing_keeps_ids_counting_and_bumps_the_generation():
+    journal = Journal(SITE)
+    journal.note("action", "before")
+
+    journal.clear()
+    journal.note("action", "after")
+
+    assert journal.generation == 1
+    assert [(entry.id, entry.text) for entry in journal.recent()] == [(2, "after")]

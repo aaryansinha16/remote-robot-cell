@@ -2,6 +2,7 @@ import logging
 import sqlite3
 from collections.abc import Callable
 
+import aiosqlite
 from robotcell_protocol import (
     TERMINAL_STATUSES,
     Enrollment,
@@ -161,7 +162,9 @@ class JobService:
                     update.job_id,
                 ),
             )
-        self._hub.publish("job", await self._view(update.job_id))
+            view = await _read(conn, update.job_id)
+        if view:
+            self._hub.publish("job", view)
 
     async def refuse_cancel(self, job_id: str, reason: str | None) -> None:
         now = self._clock()
@@ -171,9 +174,28 @@ class JobService:
                 "WHERE job_id = ?",
                 (reason, now, job_id),
             )
-        view = await self._view(job_id)
-        self._hub.publish("job", view)
-        self._hub.notice("warning", f"Job #{view.id} was not cancelled: {reason}")
+            view = await _read(conn, job_id)
+        if view:
+            self._hub.publish("job", view)
+            self._hub.notice("warning", f"Job #{view.id} was not cancelled: {reason}")
+
+    async def clear_finished(self) -> int:
+        """Drop finished jobs from the cloud's records. The site keeps its own history."""
+        placeholders = ",".join("?" * len(_TERMINAL))
+        async with self._db.transaction() as conn:
+            await conn.execute(
+                "DELETE FROM job_events WHERE job_id IN "
+                f"(SELECT job_id FROM jobs WHERE status IN ({placeholders}))",
+                _TERMINAL,
+            )
+            async with conn.execute(
+                f"DELETE FROM jobs WHERE status IN ({placeholders}) RETURNING job_id", _TERMINAL
+            ) as cursor:
+                cleared = [row["job_id"] for row in await cursor.fetchall()]
+        if cleared:
+            log.info("cleared %d finished jobs", len(cleared))
+            self._hub.publish("jobs_cleared", {"job_ids": cleared})
+        return len(cleared)
 
     async def recent(self, limit: int = 200) -> list[JobView]:
         rows = await self._db.fetchall("SELECT * FROM jobs ORDER BY id DESC LIMIT ?", (limit,))
@@ -209,3 +231,9 @@ class JobService:
     async def _by_request(self, request_id: str) -> JobView | None:
         row = await self._db.fetchone("SELECT * FROM jobs WHERE request_id = ?", (request_id,))
         return JobView.from_row(row) if row else None
+
+
+async def _read(conn: aiosqlite.Connection, job_id: str) -> JobView | None:
+    async with conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)) as cursor:
+        row = await cursor.fetchone()
+    return JobView.from_row(row) if row else None

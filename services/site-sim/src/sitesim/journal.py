@@ -51,6 +51,7 @@ class Journal:
         self._clock = clock
         self._entries: deque[Entry] = deque(maxlen=size)
         self._next_id = 0
+        self.generation = 0
         self._cells: dict[int, tuple[str, ...]] = {}
         self._robots: dict[str, RobotTelemetry] = {}
 
@@ -60,6 +61,11 @@ class Journal:
 
     def recent(self, after: int = 0, limit: int = 40) -> list[Entry]:
         return [entry for entry in self._entries if entry.id > after][-limit:]
+
+    def clear(self) -> None:
+        """Empty the log. Ids keep counting, and the bumped generation tells pages to reset."""
+        self._entries.clear()
+        self.generation += 1
 
     def observe_people(self, actors: Iterable[Actor]) -> None:
         seen: dict[int, tuple[str, ...]] = {}

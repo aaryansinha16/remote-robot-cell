@@ -61,6 +61,26 @@ async def test_running_and_finished_jobs_cannot_be_cancelled(cloud):
         await cloud.jobs.request_cancel(job.job_id)
 
 
+async def test_clearing_finished_jobs_keeps_open_ones(cloud):
+    await cloud.fleet.apply_robot("site-001", snapshot())
+    done, _ = await cloud.jobs.create(BODY, None)
+    failed, _ = await cloud.jobs.create(BODY, None)
+    queued, _ = await cloud.jobs.create(BODY, None)
+    for job, status in ((done, "done"), (failed, "failed"), (queued, "queued")):
+        await cloud.jobs.apply_status(
+            JobStatusUpdate(job_id=job.job_id, robot_id="robot-1", status=status, seq=5, at=5)
+        )
+
+    assert await cloud.jobs.clear_finished() == 2
+    assert [job.job_id for job in await cloud.jobs.recent()] == [queued.job_id]
+
+    await cloud.jobs.apply_status(
+        JobStatusUpdate(job_id=done.job_id, robot_id="robot-1", status="done", seq=6, at=6)
+    )
+    with pytest.raises(NotFound):
+        await cloud.jobs.detail(done.job_id)
+
+
 async def test_offline_notice_from_previous_boot_is_ignored(cloud):
     await cloud.fleet.apply_site_status("site-001", SiteStatus(online=True, boot_id="new"))
 

@@ -214,6 +214,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 robot_id: {**telemetry.model_dump(mode="json"), "live": bus.live(robot_id)}
                 for robot_id, telemetry in bus.robots.items()
             },
+            "log": journal.generation,
             "events": [entry.as_dict() for entry in events],
         }
 
@@ -243,6 +244,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return StreamingResponse(
             stream(), media_type="text/event-stream", headers={"Cache-Control": "no-store"}
         )
+
+    @app.delete("/api/events")
+    async def clear_events() -> dict[str, bool]:
+        journal.clear()
+        return {"cleared": True}
 
     @app.post("/api/people", status_code=201)
     async def spawn(body: SpawnPerson) -> dict[str, int]:

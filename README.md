@@ -55,6 +55,10 @@ the site network.
 `make help` lists everything. `make reset` wipes all data. `FAILURE_RATE` in `.env` (see
 `.env.example`) controls how often a simulated job fails, 15% by default.
 
+To tidy up between runs without a reset, **Clear finished** above the job list removes done,
+failed, rejected and cancelled jobs from the cloud's records, and **Clear log** empties the
+floor's event log. Open jobs stay, robots stay enrolled, and the site keeps its own history.
+
 ## Architecture
 
 ```

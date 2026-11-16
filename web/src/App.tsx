@@ -52,6 +52,7 @@ export default function App() {
           siteOnline={siteOnline}
           now={now}
           onError={fail}
+          onInfo={info}
         />
       </main>
       <Toasts toasts={toasts} onDismiss={dismiss} />
