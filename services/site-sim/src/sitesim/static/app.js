@@ -211,15 +211,16 @@ class PeopleList {
 class EventLog {
   constructor(root) {
     this.root = root
-    this.boot = null
+    this.session = null
     this.lastId = 0
     this.empty = element('li', 'empty', 'Nothing has happened yet.')
     root.append(this.empty)
   }
 
-  update(boot, events) {
-    if (boot !== this.boot) {
-      this.boot = boot
+  update(boot, generation, events) {
+    const session = `${boot}:${generation}`
+    if (session !== this.session) {
+      this.session = session
       this.lastId = 0
       this.root.replaceChildren()
     }
@@ -306,6 +307,7 @@ async function start() {
     button.addEventListener('click', () => spawn(JSON.parse(button.dataset.spawn)))
   })
   $('leave-all').addEventListener('click', leaveAll)
+  $('clear-log').addEventListener('click', () => call('DELETE', '/events'))
   $('feed').addEventListener('click', toggleFeed)
 
   document.addEventListener('keydown', (event) => {
@@ -332,7 +334,7 @@ async function start() {
     for (const [robotId, card] of cards) card.update(view.robots[robotId], view.faults[robotId])
     people.update(view.actors)
     renderFeed(view)
-    log.update(view.boot, view.events)
+    log.update(view.boot, view.log, view.events)
   }
 
   const source = new EventSource('/api/live')

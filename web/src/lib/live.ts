@@ -36,6 +36,11 @@ function reduce(store: Store, action: Action): Store {
       if (current && action.data.updated_at < current.updated_at) return store
       return { ...store, jobs: new Map(store.jobs).set(action.data.job_id, action.data) }
     }
+    case 'jobs_cleared': {
+      const jobs = new Map(store.jobs)
+      for (const jobId of action.data.job_ids) jobs.delete(jobId)
+      return { ...store, jobs }
+    }
     case 'connection':
       return { ...store, connection: action.value }
   }

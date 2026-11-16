@@ -26,6 +26,7 @@ def test_job_api_round_trip(settings):
         assert cancel.json()["cancel_requested"] is True
 
         assert client.get("/api/jobs/missing").status_code == 404
+        assert client.delete("/api/jobs/finished").json() == {"cleared": 0}
 
         with client.websocket_connect("/api/ws") as ws:
             first = ws.receive_json()

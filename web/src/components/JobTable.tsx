@@ -38,16 +38,20 @@ export function JobTable({
   siteOnline,
   now,
   onError,
+  onInfo,
 }: {
   jobs: Job[]
   robots: Robot[]
   siteOnline: boolean
   now: number
   onError: (message: string) => void
+  onInfo: (message: string) => void
 }) {
   const [filter, setFilter] = useState<Filter>('all')
   const [open, setOpen] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false)
   const robotsById = new Map(robots.map((robot) => [robot.robot_id, robot]))
+  const finished = jobs.filter((job) => !ACTIVE_STATUSES.includes(job.status)).length
 
   const visible = jobs.filter((job) => {
     const active = ACTIVE_STATUSES.includes(job.status)
@@ -62,21 +66,63 @@ export function JobTable({
     }
   }
 
+  const clearFinished = async () => {
+    setConfirming(false)
+    try {
+      const { cleared } = await api.clearFinished()
+      onInfo(cleared === 1 ? 'Cleared 1 finished job' : `Cleared ${cleared} finished jobs`)
+    } catch (error) {
+      onError(errorMessage(error))
+    }
+  }
+
   return (
     <section className="rounded-xl border border-line bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
         <h2 className="font-semibold">Jobs</h2>
-        <div className="flex rounded-md border border-line p-0.5 text-xs">
-          {(['all', 'active', 'finished'] as const).map((value) => (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {confirming ? (
+            <>
+              <span className="text-muted">
+                Remove {finished} finished {finished === 1 ? 'job' : 'jobs'} from the list?
+              </span>
+              <button
+                type="button"
+                onClick={() => void clearFinished()}
+                className="rounded-md border border-red-400 px-2.5 py-1 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                className="rounded-md border border-line px-2.5 py-1 hover:bg-sunken"
+              >
+                Keep
+              </button>
+            </>
+          ) : (
             <button
-              key={value}
               type="button"
-              onClick={() => setFilter(value)}
-              className={`rounded px-2.5 py-1 capitalize ${filter === value ? 'bg-sunken font-medium' : 'text-muted'}`}
+              disabled={finished === 0}
+              onClick={() => setConfirming(true)}
+              className="rounded-md border border-line px-2.5 py-1 text-muted enabled:hover:bg-sunken enabled:hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {value}
+              Clear finished
             </button>
-          ))}
+          )}
+          <div className="flex rounded-md border border-line p-0.5">
+            {(['all', 'active', 'finished'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setFilter(value)}
+                className={`rounded px-2.5 py-1 capitalize ${filter === value ? 'bg-sunken font-medium' : 'text-muted'}`}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       <div className="overflow-x-auto">

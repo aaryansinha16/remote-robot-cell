@@ -102,6 +102,7 @@ export type LiveMessage =
   | { type: 'site'; data: Site }
   | { type: 'robot'; data: Robot }
   | { type: 'job'; data: Job }
+  | { type: 'jobs_cleared'; data: { job_ids: string[] } }
   | { type: 'notice'; data: Notice }
 
 export interface NewJob {
